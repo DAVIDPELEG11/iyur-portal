@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>איור פרוייקטים – מודל</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><button id="back">→ הפרויקטים</button><h1 id="name">טוען…</h1><span class="sp"></span><span class="small" id="st" style="color:#fff"></span></header>
+<iframe id="frame" title="מודל תלת-ממד" sandbox="allow-scripts allow-same-origin allow-downloads"></iframe>
+<script type="module">
+import { sb, $, here, needUser } from './portal.js';
+// the packed model (the program's "פתח אותי - מודל.html" + its data files) lives in the private bucket models/<project>/;
+// every file is fetched with this user's rights (RLS: members only) and the page is assembled in the frame, nothing public
+const user = await needUser(); if (!user) throw 0;
+$('#back').onclick = () => location.href = here('projects.html');
+const p = new URLSearchParams(location.search).get('p') || '';
+if (!/^[a-z0-9_-]{2,32}$/.test(p)) location.replace(here('projects.html'));
+const { data: proj } = await sb.from('projects').select('name').eq('short', p).maybeSingle();
+if (!proj) { $('#name').textContent = 'אין לך גישה לפרויקט הזה'; throw 0; }
+$('#name').textContent = proj.name;
+// always the model as uploaded last: the storage answers with an hour of browser cache, and after a new upload the customer kept
+// seeing the old model (18.11) – a short signed link fetched with no-store skips the cache
+const get = async (f) => {
+  const { data, error } = await sb.storage.from('models').createSignedUrl(`${p}/${f}`, 120); if (error) throw error;
+  const r = await fetch(data.signedUrl, { cache: 'no-store' }); if (!r.ok) throw new Error(`${f}: ${r.status}`); return r.text();
+};
+$('#st').textContent = 'טוען את המודל…';
+let html = await get('index.html');
+const srcs = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)].map(m => m[1]).filter(s => /^[\w.-]+\.js$/.test(s));
+for (const s of srcs) {
+  let js = ''; try { js = await get(s); } catch { js = ''; }
+  html = html.replace(`<script src="${s}"><\/script>`, () => `<script>${js.replace(/<\/script/gi, '<\\/script')}<\/script>`);
+}
+$('#frame').srcdoc = html; $('#st').textContent = '';
+</script>
+</body></html>

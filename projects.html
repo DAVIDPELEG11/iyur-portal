@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>איור פרוייקטים – הפרויקטים שלי</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><h1>איור פרוייקטים</h1><span class="sp"></span><button id="adm" hidden>ניהול</button><button id="out">יציאה</button></header>
+<main>
+  <section class="card"><h2>הפרויקטים שלי</h2><ul class="list" id="list"></ul><div id="m" class="msg"></div></section>
+  <section class="card" id="pkCard" hidden>
+    <h2>זיהוי פנים</h2><p class="small">כניסה מהירה מהמכשיר הזה בלי סיסמה.</p>
+    <button class="second" id="add">הוסף זיהוי פנים למכשיר הזה</button><div id="m2" class="msg"></div>
+  </section>
+</main>
+<script type="module">
+import { sb, $, msg, here, needUser, isAdmin, signOut, canPasskey, addPasskey } from './portal.js';
+const user = await needUser(); if (!user) throw 0;
+$('#out').onclick = signOut;
+if (await isAdmin(user.id)) { $('#adm').hidden = false; $('#adm').onclick = () => location.href = here('admin.html'); }
+if (canPasskey()) $('#pkCard').hidden = false;
+$('#add').onclick = async () => { try { await addPasskey(); msg($('#m2'), 'נוסף', 'ok'); } catch (e) { msg($('#m2'), e.message || 'בוטל', 'bad'); } };
+const { data, error } = await sb.from('projects').select('short, name, address, updated_at').order('updated_at', { ascending: false });
+if (error) msg($('#m'), 'הטעינה נכשלה', 'bad');
+else if (!data.length) msg($('#m'), 'עוד לא שויך אליך פרויקט');
+for (const p of data || []) {
+  const li = document.createElement('li'), t = document.createElement('div'); t.className = 'grow';
+  t.innerHTML = `<b></b><br><span class="small"></span>`; t.querySelector('b').textContent = p.name; t.querySelector('span').textContent = (p.address || '') + ' · עודכן ' + new Date(p.updated_at).toLocaleDateString('he-IL');
+  const b = document.createElement('button'); b.className = 'primary'; b.textContent = 'פתח מודל'; b.onclick = () => location.href = here('viewer.html?p=' + encodeURIComponent(p.short));
+  li.append(t, b); $('#list').append(li);
+}
+</script>
+</body></html>
