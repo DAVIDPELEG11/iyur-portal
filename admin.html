@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>איור פרוייקטים – ניהול</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><h1>ניהול – איור פרוייקטים</h1><span class="sp"></span><button id="proj">הפרויקטים</button><button id="out">יציאה</button></header>
+<main>
+  <section class="card">
+    <h2>העלאת מודל של פרויקט</h2>
+    <p class="small">בוחרים את תיקיית המסירה של התוכנה (למשל "מודל מהתוכנה"). עולים רק קובץ המודל וקובצי הנתונים שלו – לא התוכניות.</p>
+    <div class="row"><div><label for="short">קיצור (אנגלית)</label><input id="short" placeholder="tiberias400" pattern="[a-z0-9_-]{2,32}"></div>
+      <div><label for="pname">שם הפרויקט</label><input id="pname" style="direction:rtl" placeholder="טבריה - מגרש 400"></div></div>
+    <label for="addr">כתובת</label><input id="addr" style="direction:rtl">
+    <label for="dir">תיקיית המסירה</label><input id="dir" type="file" webkitdirectory multiple>
+    <button class="primary" id="up">העלה</button><div id="m1" class="msg"></div>
+  </section>
+  <section class="card">
+    <h2>לקוחות לפי פרויקט</h2>
+    <label for="sel">פרויקט</label><select id="sel" style="width:100%;padding:12px;border-radius:10px"></select>
+    <ul class="list" id="mem"></ul>
+    <label for="email">הוסף לקוח לפי מייל</label><input id="email" type="email" autocomplete="off">
+    <button class="primary" id="inv">הוסף לקוח והכן קישור כניסה</button><div id="m2" class="msg"></div>
+    <div id="share" hidden style="margin-top:14px">
+      <label for="txt">הודעה מוכנה ללקוח (עם קישור אישי לקביעת סיסמה)</label>
+      <textarea id="txt" rows="6" style="width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);font:inherit;direction:rtl"></textarea>
+      <div class="row"><button class="second" id="copy">העתק את ההודעה</button><button class="primary" id="wa">שלח בוואטסאפ</button></div>
+    </div>
+  </section>
+</main>
+<script type="module">
+import { sb, $, msg, here, needUser, signOut, inviteCustomer, halt } from './portal.js';
+const user = await needUser(true); if (!user) await halt();   // on the way to the sign-in page: stop here quietly ("throw 0" printed "Uncaught 0" – testing 22.11 §7)
+$('#out').onclick = signOut; $('#proj').onclick = () => location.href = here('projects.html');
+async function loadProjects() {
+  const { data } = await sb.from('projects').select('short, name').order('name'); $('#sel').innerHTML = '';
+  for (const p of data || []) { const o = document.createElement('option'); o.value = p.short; o.textContent = `${p.name} (${p.short})`; $('#sel').append(o); }
+  await loadMembers();
+}
+async function loadMembers() {
+  $('#mem').innerHTML = ''; const p = $('#sel').value; if (!p) return;
+  const { data } = await sb.from('project_members').select('email, added_at').eq('project_short', p).order('added_at');
+  for (const m of data || []) { const li = document.createElement('li'), t = document.createElement('span'); t.className = 'grow'; t.textContent = m.email;
+    const b = document.createElement('button'); b.className = 'second'; b.textContent = 'הסר'; b.onclick = async () => { await inviteCustomer(m.email, p, true); loadMembers(); };
+    const n = document.createElement('button'); n.className = 'second'; n.textContent = 'קישור חדש'; n.onclick = async () => { const r = await inviteCustomer(m.email, p, false, true); showLink(r.link, p); };
+    li.append(t, n, b); $('#mem').append(li); }
+}
+$('#sel').onchange = loadMembers;
+$('#up').onclick = async () => {
+  const short = $('#short').value.trim().toLowerCase(), name = $('#pname').value.trim(), files = [...$('#dir').files];
+  if (!/^[a-z0-9_-]{2,32}$/.test(short) || !name) return msg($('#m1'), 'חסר קיצור באנגלית או שם', 'bad');
+  // the model page (its Hebrew name → index.html) and its top-level data scripts only – never the plans or other documents
+  const pick = files.filter(f => f.webkitRelativePath.split('/').length === 2 && (/\.js$/.test(f.name) || /\.html$/.test(f.name)) && f.name !== 'registry.js');   // the input registry names the client's files – not for the customer
+  const page = pick.find(f => /\.html$/.test(f.name)); if (!page) return msg($('#m1'), 'לא נמצא קובץ המודל (html) בתיקייה', 'bad');
+  const { error: pe } = await sb.from('projects').upsert({ short, name, address: $('#addr').value.trim() || null, updated_at: new Date().toISOString() });
+  if (pe) return msg($('#m1'), 'שמירת הפרויקט נכשלה: ' + pe.message, 'bad');
+  let n = 0;
+  for (const f of pick) {
+    const key = f === page ? 'index.html' : f.name; if (f !== page && !/^[\w.-]+\.js$/.test(key)) continue;
+    msg($('#m1'), `מעלה ${++n}/${pick.length}: ${key}`);
+    const { error } = await sb.storage.from('models').upload(`${short}/${key}`, f, { upsert: true, contentType: f === page ? 'text/html' : 'text/javascript' });
+    if (error) return msg($('#m1'), `ההעלאה נכשלה (${key}): ${error.message}`, 'bad');
+  }
+  msg($('#m1'), `הועלה: ${n} קבצים`, 'ok'); loadProjects();
+};
+// a personal sign-in link with a Hebrew message (Supabase's own emails are English on the free plan): David sends it himself
+function showLink(link, p) {
+  if (!link) return;
+  const name = $('#sel').selectedOptions[0]?.textContent.replace(/\s*\([^)]*\)$/, '') || '';
+  $('#txt').value = `שלום,
+הוזמנת לצפות במודל התלת־ממדי של הפרויקט "${name}".
+בכניסה הראשונה לחץ על הקישור וקבע לעצמך סיסמה (אפשר אחר כך להוסיף כניסה בזיהוי פנים):
+${link}
+
+הקישור אישי ותקף ל־24 שעות.`;
+  $('#share').hidden = false;
+  $('#copy').onclick = async () => { await navigator.clipboard.writeText($('#txt').value); msg($('#m2'), 'ההודעה הועתקה', 'ok'); };
+  $('#wa').onclick = () => window.open('https://wa.me/?text=' + encodeURIComponent($('#txt').value), '_blank');
+}
+$('#inv').onclick = async () => {
+  const email = $('#email').value.trim(), p = $('#sel').value; if (!p) return msg($('#m2'), 'בחר פרויקט', 'bad');
+  try { const r = await inviteCustomer(email, p); msg($('#m2'), r.link ? 'הלקוח נוסף – שלח לו את ההודעה שלמטה' : 'הלקוח הקיים צורף לפרויקט', 'ok'); $('#email').value = ''; showLink(r.link, p); loadMembers(); }
+  catch (e) { msg($('#m2'), e.message, 'bad'); }
+};
+loadProjects();
+</script>
+</body></html>

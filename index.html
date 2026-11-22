@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="he" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>איור פרוייקטים – כניסה</title><link rel="stylesheet" href="style.css"></head>
+<body>
+<header><h1>איור פרוייקטים</h1><span class="sp"></span></header>
+<main>
+  <section class="card">
+    <h2>כניסה לפרויקט שלך</h2>
+    <!-- the browser / password manager saves and fills these by their autocomplete names; "webauthn" lets it offer the passkey too -->
+    <form id="f" autocomplete="on">
+      <label for="email">מייל</label>
+      <input id="email" name="username" type="email" autocomplete="username webauthn" inputmode="email" required>
+      <label for="pw">סיסמה</label>
+      <input id="pw" name="password" type="password" autocomplete="current-password" required minlength="8">
+      <button class="primary" type="submit">כניסה</button>
+    </form>
+    <button class="second" id="pk" type="button" hidden>כניסה בזיהוי פנים / טביעת אצבע</button>
+    <div id="m" class="msg" role="status"></div>
+    <p class="small"><a href="#" id="forgot">שכחתי סיסמה</a></p>
+  </section>
+  <p class="small">הגישה לפי הזמנה בלבד. הוזמנת? פתח את הקישור שבמייל וקבע סיסמה.</p>
+</main>
+<script type="module">
+import { sb, $, msg, here, canPasskey, passkeyLogin } from './portal.js';
+const go = () => location.replace(here('projects.html'));
+const { data } = await sb.auth.getSession(); if (data.session) go();
+if (canPasskey()) $('#pk').hidden = false;
+$('#f').addEventListener('submit', async (e) => {
+  e.preventDefault(); msg($('#m'), 'מתחבר…');
+  const { error } = await sb.auth.signInWithPassword({ email: $('#email').value.trim(), password: $('#pw').value });
+  if (error) return msg($('#m'), 'המייל או הסיסמה שגויים', 'bad'); go();
+});
+$('#pk').addEventListener('click', async () => {
+  msg($('#m'), 'מאמת…'); try { await passkeyLogin(); go(); } catch (e) { msg($('#m'), e.message || 'הכניסה בזיהוי פנים נכשלה', 'bad'); }
+});
+$('#forgot').addEventListener('click', async (e) => {
+  e.preventDefault(); const email = $('#email').value.trim(); if (!email) return msg($('#m'), 'כתוב את המייל ואז לחץ שוב', 'bad');
+  msg($('#m'), 'כדי לקבוע סיסמה חדשה, פנה למשרד ותקבל קישור אישי חדש', 'ok');
+});
+</script>
+</body></html>
